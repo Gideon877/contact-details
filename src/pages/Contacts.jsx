@@ -5,31 +5,65 @@ import {
     DialogTitle, DialogContent, DialogActions, MenuItem, CircularProgress 
 } from '@mui/material';
 import { useQuery, useMutation } from '@apollo/client/react';
+
 import { GET_CONTACTS, GET_CLIENTS } from '../graphql/queries';
-import { CREATE_CONTACT, LINK_CONTACT_TO_CLIENT, UNLINK_CONTACT_FROM_CLIENT } from '../graphql/mutations';
+import { 
+    CREATE_CONTACT, 
+    LINK_CONTACT_TO_CLIENT, 
+    UNLINK_CONTACT_FROM_CLIENT 
+} from '../graphql/mutations';
+
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const Contacts = () => {
-    // 1. Data Fetching (Contacts and Clients for the dropdown)
-    const { data: contactsData, loading: contactsLoading, refetch } = useQuery(GET_CONTACTS);
+    // --- 1. DATA FETCHING ---
+    const { data: contactsData, loading: contactsLoading, refetch } = useQuery(GET_CONTACTS, {
+        fetchPolicy: 'cache-and-network'
+    });
     const { data: clientsData } = useQuery(GET_CLIENTS);
 
+    // FIX: Wrap initializations in useMemo to satisfy ESLint dependencies
+    const contacts = useMemo(() => contactsData?.contacts || [], [contactsData]);
+    const allClients = useMemo(() => clientsData?.clients || [], [clientsData]);
+
+    // --- 2. LOCAL STATE ---
     const [isCreating, setIsCreating] = useState(false);
     const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
 
-    // State for Linking Dialog
     const [linkDialogOpen, setLinkDialogOpen] = useState(false);
     const [activeContactId, setActiveContactId] = useState(null);
     const [selectedClientCode, setSelectedClientCode] = useState('');
 
-    // 2. Mutations
-    const [createContact] = useMutation(CREATE_CONTACT, { onCompleted: () => { refetch(); setIsCreating(false); setForm({ firstName: '', lastName: '', email: '', phone: '' }); } });
-    const [linkClient] = useMutation(LINK_CONTACT_TO_CLIENT, { onCompleted: () => { refetch(); setLinkDialogOpen(false); setSelectedClientCode(''); } });
-    const [unlinkClient] = useMutation(UNLINK_CONTACT_FROM_CLIENT, { onCompleted: () => refetch() });
+    const [confirmState, setConfirmState] = useState({
+        open: false,
+        contactId: null,
+        clientCode: null,
+        clientName: ''
+    });
 
-    const contacts = contactsData?.contacts || [];
-    const allClients = clientsData?.clients || [];
+    // --- 3. MUTATIONS ---
+    const [createContact] = useMutation(CREATE_CONTACT, { 
+        onCompleted: () => { 
+            refetch(); 
+            setIsCreating(false); 
+            setForm({ firstName: '', lastName: '', email: '', phone: '' }); 
+        } 
+    });
 
-    // Filter available clients: exclude those already linked to this contact
+    // FIX: Using 'linkClient' here (it was previously declared but unread)
+    const [linkClient] = useMutation(LINK_CONTACT_TO_CLIENT, { 
+        refetchQueries: [{ query: GET_CONTACTS }, { query: GET_CLIENTS }],
+        onCompleted: () => { 
+            setLinkDialogOpen(false); 
+            setSelectedClientCode(''); 
+        } 
+    });
+
+    const [unlinkClient] = useMutation(UNLINK_CONTACT_FROM_CLIENT, { 
+        refetchQueries: [{ query: GET_CONTACTS }, { query: GET_CLIENTS }]
+    });
+
+    // --- 4. LOGIC & FILTERING ---
     const filteredClientOptions = useMemo(() => {
         const activeContact = contacts.find(c => c.id === activeContactId);
         if (!activeContact) return allClients;
@@ -37,27 +71,38 @@ const Contacts = () => {
         return allClients.filter(client => !linkedCodes.includes(client.code));
     }, [contacts, activeContactId, allClients]);
 
+    // --- 5. EVENT HANDLERS ---
     const handleOpenLinkDialog = (id) => {
         setActiveContactId(id);
         setLinkDialogOpen(true);
     };
 
+    // FIX: Defining handleConfirmLink (resolved the ReferenceError)
     const handleConfirmLink = () => {
         if (!selectedClientCode || !activeContactId) return;
         linkClient({ variables: { contactId: activeContactId, clientCode: selectedClientCode } });
     };
 
-    const handleUnlink = (contactId, clientCode) => {
-        if (window.confirm(`Are you sure you want to unlink ${clientCode}?`)) {
-            unlinkClient({ variables: { contactId, clientCode } });
-        }
+    const handleOpenConfirmUnlink = (contactId, clientCode, clientName) => {
+        setConfirmState({ open: true, contactId, clientCode, clientName });
+    };
+
+    const handleExecuteUnlink = () => {
+        unlinkClient({ 
+            variables: { 
+                contactId: confirmState.contactId, 
+                clientCode: confirmState.clientCode 
+            } 
+        });
+        setConfirmState(prev => ({ ...prev, open: false }));
     };
 
     const handleSaveContact = () => {
+        if (!form.firstName || !form.lastName || !form.email) return;
         createContact({ variables: { input: form } });
     };
 
-    if (contactsLoading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
+    if (contactsLoading && !isCreating) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
 
     return (
         <Box sx={{ p: 3 }}>
@@ -89,7 +134,7 @@ const Contacts = () => {
                             <TableRow>
                                 <TableCell>Full Name</TableCell>
                                 <TableCell>Email</TableCell>
-                                <TableCell align="center">No. of linked clients</TableCell>
+                                <TableCell align="center">Linked Clients</TableCell>
                                 <TableCell>Actions</TableCell>
                             </TableRow>
                         </TableHead>
@@ -108,8 +153,8 @@ const Contacts = () => {
                                                     <Link 
                                                         key={client.code} 
                                                         component="button" 
-                                                        onClick={() => handleUnlink(contact.id, client.code)}
-                                                        sx={{ fontSize: '0.75rem', color: 'error.main' }}
+                                                        onClick={() => handleOpenConfirmUnlink(contact.id, client.code, client.name)}
+                                                        sx={{ fontSize: '0.75rem', color: 'error.main', textDecoration: 'none' }}
                                                     >
                                                         Unlink {client.code}
                                                     </Link>
@@ -117,7 +162,7 @@ const Contacts = () => {
                                                 <Link 
                                                     component="button" 
                                                     onClick={() => handleOpenLinkDialog(contact.id)}
-                                                    sx={{ fontSize: '0.75rem', fontWeight: 'bold' }}
+                                                    sx={{ fontSize: '0.75rem', fontWeight: 'bold', textDecoration: 'none' }}
                                                 >
                                                     + Link Client
                                                 </Link>
@@ -131,7 +176,6 @@ const Contacts = () => {
                 </TableContainer>
             )}
 
-            {/* Selection Dialog for Linking */}
             <Dialog open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)}>
                 <DialogTitle>Link to Client</DialogTitle>
                 <DialogContent sx={{ minWidth: 300 }}>
@@ -158,6 +202,16 @@ const Contacts = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            <ConfirmDialog 
+                open={confirmState.open}
+                title="Unlink Client"
+                message={`Are you sure you want to unlink ${confirmState.clientName} (${confirmState.clientCode})?`}
+                confirmText="Unlink"
+                color="error"
+                onConfirm={handleExecuteUnlink}
+                onCancel={() => setConfirmState(prev => ({ ...prev, open: false }))}
+            />
         </Box>
     );
 };

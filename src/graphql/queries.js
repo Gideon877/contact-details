@@ -28,3 +28,19 @@ export const GET_CONTACTS = gql`
         }
     }
 `;
+
+export const GET_DASHBOARD_STATS = gql`
+    query GetDashboardStats {
+        clients {
+            id
+            name
+            linkedContactsCount
+        }
+        contacts {
+            id
+            firstName
+            lastName
+            linkedClientsCount
+        }
+    }
+`;

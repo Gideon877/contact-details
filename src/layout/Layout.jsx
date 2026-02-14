@@ -109,9 +109,7 @@ export default function DashboardLayout() {
                         <MenuIcon />
                     </IconButton>
 
-                    <Typography variant="h6" sx={{ ml: 2 }}>
-                        Contacts App 🚀
-                    </Typography>
+                   
                 </Toolbar>
             </AppBar>
 

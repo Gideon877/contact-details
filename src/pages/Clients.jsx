@@ -9,7 +9,7 @@ import { CREATE_CLIENT } from '../graphql/mutations';
 
 const Clients = () => {
     // 1. Data Fetching
-    const { data, loading, error, refetch } = useQuery(GET_CLIENTS, {
+    const { data, loading, refetch } = useQuery(GET_CLIENTS, {
         fetchPolicy: 'cache-and-network',
     });
     const [isCreating, setIsCreating] = useState(false);
