@@ -1,15 +1,10 @@
-import { useState } from 'react'
 import './App.css'
 
-function App() {
+import Router from "./router"
 
-  return (
-    <>
-      <div>
-        <h1>Contact Details</h1>
-      </div>
-    </>
-  )
+function App() {
+    return <Router />
 }
 
 export default App
+
