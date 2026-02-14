@@ -1,5 +1,4 @@
 # Contact & Client Manager
-========================
 
 A modern, responsive web application designed to manage business relationships by tracking **Clients**, **Contacts**, and the **Connection Density** between them. This tool helps users visualize how well-connected their contacts are to various client organizations.
 
