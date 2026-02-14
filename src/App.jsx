@@ -4,9 +4,11 @@ import Router from "./router"
 import { client } from './graphql/graphqlClient'
 
 function App() {
-    <ApolloProvider client={client}>
-        <Router />
-    </ApolloProvider>
+    return (
+        <ApolloProvider client={client}>
+            <Router />
+        </ApolloProvider>
+    )
 }
 
 export default App
