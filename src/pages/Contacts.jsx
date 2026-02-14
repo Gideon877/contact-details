@@ -2,88 +2,62 @@ import React, { useState, useMemo } from 'react';
 import { 
     Typography, Button, Table, TableBody, TableCell, TableContainer, 
     TableHead, TableRow, Paper, TextField, Box, Link, Dialog, 
-    DialogTitle, DialogContent, DialogActions, MenuItem 
+    DialogTitle, DialogContent, DialogActions, MenuItem, CircularProgress 
 } from '@mui/material';
-
-// MOCK DATA - This would be your GraphQL Query result later
-const ALL_CLIENTS = [
-    { name: 'First National Bank', code: 'FNB001' },
-    { name: 'Protea', code: 'PRO123' },
-    { name: 'IT Solutions', code: 'ITA001' },
-    { name: 'Global Tech', code: 'GLO001' },
-    { name: 'Standard Bank', code: 'STD002' }
-];
+import { useQuery, useMutation } from '@apollo/client/react';
+import { GET_CONTACTS, GET_CLIENTS } from '../graphql/queries';
+import { CREATE_CONTACT, LINK_CONTACT_TO_CLIENT, UNLINK_CONTACT_FROM_CLIENT } from '../graphql/mutations';
 
 const Contacts = () => {
-    const [contacts, setContacts] = useState([
-        { firstName: 'Thabang', lastName: 'Magaola', email: 'thabang@example.com', linkedClients: ['FNB001'] }
-    ]);
+    // 1. Data Fetching (Contacts and Clients for the dropdown)
+    const { data: contactsData, loading: contactsLoading, refetch } = useQuery(GET_CONTACTS);
+    const { data: clientsData } = useQuery(GET_CLIENTS);
+
     const [isCreating, setIsCreating] = useState(false);
-    const [form, setForm] = useState({ firstName: '', lastName: '', email: '' });
+    const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
 
     // State for Linking Dialog
     const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-    const [activeContactEmail, setActiveContactEmail] = useState(null);
+    const [activeContactId, setActiveContactId] = useState(null);
     const [selectedClientCode, setSelectedClientCode] = useState('');
 
-    // 1. Identify the current contact being edited to filter available options
-    const activeContact = useMemo(() => 
-        contacts.find(c => c.email === activeContactEmail), 
-    [contacts, activeContactEmail]);
+    // 2. Mutations
+    const [createContact] = useMutation(CREATE_CONTACT, { onCompleted: () => { refetch(); setIsCreating(false); setForm({ firstName: '', lastName: '', email: '', phone: '' }); } });
+    const [linkClient] = useMutation(LINK_CONTACT_TO_CLIENT, { onCompleted: () => { refetch(); setLinkDialogOpen(false); setSelectedClientCode(''); } });
+    const [unlinkClient] = useMutation(UNLINK_CONTACT_FROM_CLIENT, { onCompleted: () => refetch() });
 
-    // 2. Filter available clients: exclude those already linked to this contact
+    const contacts = contactsData?.contacts || [];
+    const allClients = clientsData?.clients || [];
+
+    // Filter available clients: exclude those already linked to this contact
     const filteredClientOptions = useMemo(() => {
-        if (!activeContact) return ALL_CLIENTS;
-        return ALL_CLIENTS.filter(client => 
-            !activeContact.linkedClients.includes(client.code)
-        );
-    }, [activeContact]);
+        const activeContact = contacts.find(c => c.id === activeContactId);
+        if (!activeContact) return allClients;
+        const linkedCodes = activeContact.linkedClients.map(c => c.code);
+        return allClients.filter(client => !linkedCodes.includes(client.code));
+    }, [contacts, activeContactId, allClients]);
 
-    const sortedContacts = useMemo(() => {
-        return [...contacts].sort((a, b) => {
-            const fullNameA = `${a.lastName} ${a.firstName}`;
-            const fullNameB = `${b.lastName} ${b.firstName}`;
-            return fullNameA.localeCompare(fullNameB);
-        });
-    }, [contacts]);
-
-    const handleOpenLinkDialog = (email) => {
-        setActiveContactEmail(email);
+    const handleOpenLinkDialog = (id) => {
+        setActiveContactId(id);
         setLinkDialogOpen(true);
     };
 
     const handleConfirmLink = () => {
-        if (!selectedClientCode) return;
-        
-        setContacts(prev => prev.map(contact => {
-            if (contact.email === activeContactEmail) {
-                return { 
-                    ...contact, 
-                    linkedClients: [...contact.linkedClients, selectedClientCode] 
-                };
-            }
-            return contact;
-        }));
-        
-        // Reset state
-        setLinkDialogOpen(false);
-        setSelectedClientCode('');
-        setActiveContactEmail(null);
+        if (!selectedClientCode || !activeContactId) return;
+        linkClient({ variables: { contactId: activeContactId, clientCode: selectedClientCode } });
     };
 
-    const handleUnlink = (email, clientCode) => {
-        setContacts(prev => prev.map(contact => 
-            contact.email === email 
-            ? { ...contact, linkedClients: contact.linkedClients.filter(code => code !== clientCode) }
-            : contact
-        ));
+    const handleUnlink = (contactId, clientCode) => {
+        if (window.confirm(`Are you sure you want to unlink ${clientCode}?`)) {
+            unlinkClient({ variables: { contactId, clientCode } });
+        }
     };
 
     const handleSaveContact = () => {
-        setContacts([...contacts, { ...form, linkedClients: [] }]);
-        setForm({ firstName: '', lastName: '', email: '' });
-        setIsCreating(false);
+        createContact({ variables: { input: form } });
     };
+
+    if (contactsLoading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
 
     return (
         <Box sx={{ p: 3 }}>
@@ -101,6 +75,7 @@ const Contacts = () => {
                         <TextField label="First Name" fullWidth value={form.firstName} onChange={(e) => setForm({...form, firstName: e.target.value})} />
                         <TextField label="Surname" fullWidth value={form.lastName} onChange={(e) => setForm({...form, lastName: e.target.value})} />
                         <TextField label="Email" fullWidth value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} />
+                        <TextField label="Phone" fullWidth value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
                         <Box sx={{ mt: 1, display: 'flex', gap: 2 }}>
                             <Button variant="contained" onClick={handleSaveContact}>Save</Button>
                             <Button variant="outlined" onClick={() => setIsCreating(false)}>Cancel</Button>
@@ -108,63 +83,58 @@ const Contacts = () => {
                     </Box>
                 </Paper>
             ) : (
-                <>
-                    {sortedContacts.length === 0 ? (
-                        <Typography variant="body1">No contact(s) found.</Typography>
-                    ) : (
-                        <TableContainer component={Paper}>
-                            <Table>
-                                <TableHead sx={{ backgroundColor: '#fafafa' }}>
-                                    <TableRow>
-                                        <TableCell align="left">Full Name</TableCell>
-                                        <TableCell align="left">Email</TableCell>
-                                        <TableCell align="center">No. of linked clients</TableCell>
-                                        <TableCell align="left"></TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {sortedContacts.map((contact) => (
-                                        <TableRow key={contact.email}>
-                                            <TableCell align="left">{`${contact.lastName} ${contact.firstName}`}</TableCell>
-                                            <TableCell align="left">{contact.email}</TableCell>
-                                            <TableCell align="center">{contact.linkedClients.length}</TableCell>
-                                            <TableCell align="left">
-                                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-                                                    {contact.linkedClients.map(code => (
-                                                        <Link 
-                                                            key={code}
-                                                            component="button"
-                                                            onClick={() => handleUnlink(contact.email, code)}
-                                                            sx={{ fontSize: '0.75rem', color: 'error.main', textDecoration: 'none' }}
-                                                        >
-                                                            Unlink {code}
-                                                        </Link>
-                                                    ))}
+                <TableContainer component={Paper}>
+                    <Table>
+                        <TableHead sx={{ backgroundColor: '#fafafa' }}>
+                            <TableRow>
+                                <TableCell>Full Name</TableCell>
+                                <TableCell>Email</TableCell>
+                                <TableCell align="center">No. of linked clients</TableCell>
+                                <TableCell>Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {contacts.length === 0 ? (
+                                <TableRow><TableCell colSpan={4} align="center">No contact(s) found.</TableCell></TableRow>
+                            ) : (
+                                contacts.map((contact) => (
+                                    <TableRow key={contact.id}>
+                                        <TableCell>{`${contact.lastName}, ${contact.firstName}`}</TableCell>
+                                        <TableCell>{contact.email}</TableCell>
+                                        <TableCell align="center">{contact.linkedClientsCount}</TableCell>
+                                        <TableCell>
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                                {contact.linkedClients.map(client => (
                                                     <Link 
+                                                        key={client.code} 
                                                         component="button" 
-                                                        onClick={() => handleOpenLinkDialog(contact.email)}
-                                                        sx={{ fontSize: '0.75rem', fontWeight: 'bold', textDecoration: 'none' }}
+                                                        onClick={() => handleUnlink(contact.id, client.code)}
+                                                        sx={{ fontSize: '0.75rem', color: 'error.main' }}
                                                     >
-                                                        + Link Client
+                                                        Unlink {client.code}
                                                     </Link>
-                                                </Box>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    )}
-                </>
+                                                ))}
+                                                <Link 
+                                                    component="button" 
+                                                    onClick={() => handleOpenLinkDialog(contact.id)}
+                                                    sx={{ fontSize: '0.75rem', fontWeight: 'bold' }}
+                                                >
+                                                    + Link Client
+                                                </Link>
+                                            </Box>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             )}
 
             {/* Selection Dialog for Linking */}
             <Dialog open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)}>
                 <DialogTitle>Link to Client</DialogTitle>
-                <DialogContent sx={{ minWidth: 300, pt: 1 }}>
-                    <Typography variant="caption" color="textSecondary">
-                        Showing only clients not currently linked to {activeContact?.firstName}.
-                    </Typography>
+                <DialogContent sx={{ minWidth: 300 }}>
                     <TextField
                         select
                         fullWidth
@@ -174,24 +144,16 @@ const Contacts = () => {
                         variant="standard"
                         sx={{ mt: 2 }}
                     >
-                        {filteredClientOptions.length > 0 ? (
-                            filteredClientOptions.map((option) => (
-                                <MenuItem key={option.code} value={option.code}>
-                                    {option.name} ({option.code})
-                                </MenuItem>
-                            ))
-                        ) : (
-                            <MenuItem disabled>No more clients available</MenuItem>
-                        )}
+                        {filteredClientOptions.map((option) => (
+                            <MenuItem key={option.code} value={option.code}>
+                                {option.name} ({option.code})
+                            </MenuItem>
+                        ))}
                     </TextField>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setLinkDialogOpen(false)}>Cancel</Button>
-                    <Button 
-                        variant="contained" 
-                        onClick={handleConfirmLink}
-                        disabled={!selectedClientCode}
-                    >
+                    <Button variant="contained" onClick={handleConfirmLink} disabled={!selectedClientCode}>
                         Confirm Link
                     </Button>
                 </DialogActions>
