@@ -2,7 +2,9 @@
     "compilerOptions": {
         "baseUrl": ".",
         "checkJs": true,
-        "jsx": "react"
+        "noImplicitAny": false,
+        "jsx": "react",
+        "suppressImplicitAnyIndexErrors": true
     },
     "exclude": [
         "node_modules"

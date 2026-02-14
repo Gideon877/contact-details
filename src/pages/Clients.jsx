@@ -8,28 +8,25 @@ import { GET_CLIENTS } from '../graphql/queries';
 import { CREATE_CLIENT } from '../graphql/mutations';
 
 const Clients = () => {
-    // 1. Data Fetching
     const { data, loading, refetch } = useQuery(GET_CLIENTS, {
         fetchPolicy: 'cache-and-network',
     });
     const [isCreating, setIsCreating] = useState(false);
     const [nameInput, setNameInput] = useState('');
 
-    // 2. Mutation Setup
     const [createClient, { loading: isSaving }] = useMutation(CREATE_CLIENT, {
         onCompleted: () => {
-            refetch(); // Refresh the list from the server
+            refetch()
             setIsCreating(false);
             setNameInput('');
         },
         onError: (err) => {
-            alert(err.message); // Handle potential duplicate code errors
+            alert(err.message)
         }
     });
 
     const clients = data?.clients || [];
 
-    // 3. Client Code Generation Logic
     const generateCode = (name) => {
         if (!name.trim()) return '';
         const words = name.trim().split(/\s+/);
@@ -45,14 +42,13 @@ const Clients = () => {
         }
 
         const prefix = alpha.toUpperCase();
-        // Check local list to increment suffix
+
         const count = clients.filter(c => c.code.startsWith(prefix)).length;
         return prefix + (count + 1).toString().padStart(3, '0');
     };
 
     const clientCode = useMemo(() => generateCode(nameInput), [nameInput, clients]);
 
-    // Sorting logic (though the backend handles this, we keep it as a safety)
     const sortedClients = useMemo(() =>
         [...clients].sort((a, b) => a.name.localeCompare(b.name)), [clients]);
 

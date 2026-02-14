@@ -16,17 +16,14 @@ import {
 import ConfirmDialog from '../components/ConfirmDialog';
 
 const Contacts = () => {
-    // --- 1. DATA FETCHING ---
     const { data: contactsData, loading: contactsLoading, refetch } = useQuery(GET_CONTACTS, {
         fetchPolicy: 'cache-and-network'
     });
     const { data: clientsData } = useQuery(GET_CLIENTS);
 
-    // FIX: Wrap initializations in useMemo to satisfy ESLint dependencies
     const contacts = useMemo(() => contactsData?.contacts || [], [contactsData]);
     const allClients = useMemo(() => clientsData?.clients || [], [clientsData]);
 
-    // --- 2. LOCAL STATE ---
     const [isCreating, setIsCreating] = useState(false);
     const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
 
@@ -41,7 +38,6 @@ const Contacts = () => {
         clientName: ''
     });
 
-    // --- 3. MUTATIONS ---
     const [createContact] = useMutation(CREATE_CONTACT, { 
         onCompleted: () => { 
             refetch(); 
@@ -50,7 +46,6 @@ const Contacts = () => {
         } 
     });
 
-    // FIX: Using 'linkClient' here (it was previously declared but unread)
     const [linkClient] = useMutation(LINK_CONTACT_TO_CLIENT, { 
         refetchQueries: [{ query: GET_CONTACTS }, { query: GET_CLIENTS }],
         onCompleted: () => { 
@@ -63,7 +58,6 @@ const Contacts = () => {
         refetchQueries: [{ query: GET_CONTACTS }, { query: GET_CLIENTS }]
     });
 
-    // --- 4. LOGIC & FILTERING ---
     const filteredClientOptions = useMemo(() => {
         const activeContact = contacts.find(c => c.id === activeContactId);
         if (!activeContact) return allClients;
@@ -71,13 +65,11 @@ const Contacts = () => {
         return allClients.filter(client => !linkedCodes.includes(client.code));
     }, [contacts, activeContactId, allClients]);
 
-    // --- 5. EVENT HANDLERS ---
     const handleOpenLinkDialog = (id) => {
         setActiveContactId(id);
         setLinkDialogOpen(true);
     };
 
-    // FIX: Defining handleConfirmLink (resolved the ReferenceError)
     const handleConfirmLink = () => {
         if (!selectedClientCode || !activeContactId) return;
         linkClient({ variables: { contactId: activeContactId, clientCode: selectedClientCode } });
